@@ -7,7 +7,7 @@ from datetime import datetime
 # Load environment variables
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_TELEGRAM_ID = int(os.getenv("ADMIN_TELEGRAM_ID"))  # Admin ID from .env
+ADMIN_TELEGRAM_IDS = os.getenv("ADMIN_TELEGRAM_IDS").split(",")  # Load multiple admin IDs from .env and split by commas
 
 # Dictionary to store student submissions (In memory, can be replaced with a database)
 submissions = {}
@@ -25,10 +25,13 @@ async def check_file_exists(file_id: str, context: CallbackContext):
 
 async def start(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
+    user_name = update.message.from_user.first_name  # Get user's first name
 
-    # If it's the admin, let them know they can manage the teacher and submissions
-    if user_id == ADMIN_TELEGRAM_ID:
-        await update.message.reply_text(f"Hello, Admin! You can manage the teacher and submissions.")
+    # Check if the user is an admin
+    if str(user_id) in ADMIN_TELEGRAM_IDS:
+        await update.message.reply_text(
+            f"Hello, {user_name}! You are the admin. Use /register_teacher to register the teacher and /view_submissions to view student submissions."
+        )
     else:
         await update.message.reply_text("Hello! Send me your assignment file.")
 
@@ -56,7 +59,7 @@ async def register_teacher(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
 
     # Only the admin can register the teacher
-    if user_id == ADMIN_TELEGRAM_ID:
+    if str(user_id) in ADMIN_TELEGRAM_IDS:
         if context.args:
             TEACHER_TELEGRAM_ID = context.args[0]  # Get the teacher's ID from arguments
             await update.message.reply_text(f"Teacher registered with Telegram ID: {TEACHER_TELEGRAM_ID}")
@@ -70,7 +73,7 @@ async def view_submissions(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
 
     # Check if the user is the admin or teacher
-    if user_id == ADMIN_TELEGRAM_ID or user_id == TEACHER_TELEGRAM_ID:
+    if str(user_id) in ADMIN_TELEGRAM_IDS or str(user_id) == TEACHER_TELEGRAM_ID:
         # List the submissions
         if submissions:
             submission_list = "Student Submissions:\n"
