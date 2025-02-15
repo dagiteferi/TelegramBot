@@ -6,7 +6,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 # Load environment variables
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_TELEGRAM_ID = int(os.getenv("ADMIN_TELEGRAM_ID"))  # Read the admin ID from the .env file
+ADMIN_TELEGRAM_ID = int(os.getenv("ADMIN_TELEGRAM_ID"))  # Admin ID from .env
 
 # Dictionary to store student submissions (In memory, can be replaced with a database)
 submissions = {}
@@ -25,7 +25,7 @@ async def check_file_exists(file_id: str, context: CallbackContext):
 async def start(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
 
-    # Only the first user (admin) will be able to register others
+    # If it's the admin, let them know they can manage the teacher and submissions
     if user_id == ADMIN_TELEGRAM_ID:
         await update.message.reply_text(f"Hello, Admin! You can manage the teacher and submissions.")
     else:
