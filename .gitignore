@@ -1,2 +1,4 @@
 .bot
 .env
+firebase_credentials.json
+temp
