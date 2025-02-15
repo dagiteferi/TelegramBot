@@ -145,8 +145,7 @@ async def view_submissions(update: Update, context: CallbackContext) -> None:
                         parse_mode='Markdown'  # Ensure Markdown is enabled for link parsing
                     )
             
-            # Optionally, send a message summarizing the submissions
-            await update.message.reply_text(submission_list, parse_mode='Markdown')
+            
         else:
             await update.message.reply_text("📭 No submissions yet.")
     else:
