@@ -102,27 +102,55 @@ async def view_submissions(update: Update, context: CallbackContext) -> None:
     # Check if the user is an admin or a registered teacher
     if user_id in ADMIN_TELEGRAM_IDS or user_id in teachers:
         if submissions:
-            submission_list = "📂 Student Submissions:\n"
+            submission_list = "📂 **Student Submissions**:\n"
             for student_id, data in submissions.items():
                 # Get the file object using the file_id
                 file = await context.bot.get_file(data['file_id'])
                 
-                # Get the correct file URL
+                # Correctly format the file URL
                 file_url = f"https://api.telegram.org/file/bot{TOKEN}/{file.file_path}"
 
+                # Prepare the submission information with the file ID link
                 submission_list += (
-                    f"👤 {data['student_name']}: {data['file_name']} (File ID: {data['file_id']})\n"
-                    f"📅 Submitted at: {data['submission_time']}\n"
-                    f"🔗 [Download File]({file_url})\n\n"  # Add the file link here
+                    f"👤 **{data['student_name']}**: {data['file_name']} (File ID: {data['file_id']})\n"
+                    f"📅 **Submitted at**: {data['submission_time']}\n"
+                    f"🔗 **[Download File](https://api.telegram.org/file/bot{TOKEN}/{file.file_path})**\n\n"  # Use file ID link
                 )
+
+                # Prepare the caption for sending the file
+                caption = (
+                    f"📂 **Assignment Submission** from {data['student_name']}.\n"
+                    f"📅 **Submitted at**: {data['submission_time']}\n"
+                    f"🔗 **[Click here to download](https://api.telegram.org/file/bot{TOKEN}/{file.file_path})**"  # File ID link in caption
+                )
+
+            # Send the file with the caption to the teacher or admin
+            if user_id in ADMIN_TELEGRAM_IDS:
+                # If admin, send the file to the admin
+                for student_id, data in submissions.items():
+                    await context.bot.send_document(
+                        chat_id=user_id,  # Send to the admin
+                        document=file.file_id,
+                        caption=caption,  # Add caption to the document
+                        parse_mode='Markdown'  # Ensure Markdown is enabled for link parsing
+                    )
+            
+            elif user_id in teachers:
+                # If teacher, send the file to the teacher
+                for student_id, data in submissions.items():
+                    await context.bot.send_document(
+                        chat_id=user_id,  # Send to the teacher
+                        document=file.file_id,
+                        caption=caption,  # Add caption to the document
+                        parse_mode='Markdown'  # Ensure Markdown is enabled for link parsing
+                    )
+            
+            # Optionally, send a message summarizing the submissions
             await update.message.reply_text(submission_list, parse_mode='Markdown')
         else:
             await update.message.reply_text("📭 No submissions yet.")
     else:
         await update.message.reply_text("❌ You are not authorized to view submissions.")
-
-
-
 
 
 
