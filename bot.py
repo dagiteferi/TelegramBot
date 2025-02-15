@@ -65,7 +65,6 @@ async def handle_document(update: Update, context: CallbackContext) -> None:
     # Notify the student
     await update.message.reply_text(f"✅ Received your file: {file_name} at {submission_time}")
 
-# Command for admin to register a teacher
 async def register_teacher(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
 
@@ -74,18 +73,28 @@ async def register_teacher(update: Update, context: CallbackContext) -> None:
         if context.args:
             teacher_id = int(context.args[0])  # Convert teacher ID to an integer
             teachers[teacher_id] = {"registered_by": user_id}  # Store teacher's info
-            teacher_name = context.bot.get_chat(teacher_id).first_name  # Get teacher's name
-            admin_name = context.bot.get_chat(user_id).first_name  # Get admin's name
-            await update.message.reply_text(f"✅ Teacher {teacher_name} (ID: {teacher_id}) has been registered!")
+
+            # Await the coroutine to get teacher's name
+            teacher_name = (await context.bot.get_chat(teacher_id)).first_name  # Get teacher's name
+            admin_name = (await context.bot.get_chat(user_id)).first_name  # Get admin's name
+
+            # Confirm registration with admin
+            await update.message.reply_text(
+                f"✅ Teacher {teacher_name} (ID: {teacher_id}) has been registered!"
+            )
+            
+            # Send a message to the registered teacher
             await context.bot.send_message(
                 chat_id=teacher_id,
                 text=f"Hello {teacher_name}, you have been registered as a teacher by {admin_name}. "
                      "Use /view_submissions to see students' assignments."
             )
+            
         else:
             await update.message.reply_text("⚠ Please provide the teacher's Telegram ID.")
     else:
         await update.message.reply_text("❌ You are not authorized to register a teacher.")
+
 
 # Command to view student submissions (Only admins & assigned teachers can access)
 async def view_submissions(update: Update, context: CallbackContext) -> None:
