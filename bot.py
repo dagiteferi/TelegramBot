@@ -12,7 +12,9 @@ async def start(update: Update, context: CallbackContext) -> None:
 
 async def handle_document(update: Update, context: CallbackContext) -> None:
     file = update.message.document
+    print(f"Received file: {file.file_name}")  # Debug log
     await update.message.reply_text(f"Received your file: {file.file_name}")
+
 
 def main():
     app = Application.builder().token(TOKEN).build()
