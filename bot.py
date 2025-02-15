@@ -43,7 +43,7 @@ async def handle_document(update: Update, context: CallbackContext) -> None:
 
     # Download file to the local system
     await new_file.download_to_drive(file_path)
-    
+
     # Upload the file to Firebase Storage
     blob = bucket.blob(f"assignments/{file_name}")
     blob.upload_from_filename(file_path)
@@ -51,12 +51,11 @@ async def handle_document(update: Update, context: CallbackContext) -> None:
     # Check if the file is successfully uploaded
     check_file_exists(file_name)
 
-    # Respond to the user
+    # Respond to the user with the file name
     await update.message.reply_text(f"Received and uploaded your file: {file_name}")
 
     # Optionally delete the local file after uploading
     os.remove(file_path)
-
 
 def main():
     app = Application.builder().token(TOKEN).build()
