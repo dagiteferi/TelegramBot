@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
@@ -40,8 +41,11 @@ async def handle_document(update: Update, context: CallbackContext) -> None:
     # Check if the file exists in Telegram storage
     await check_file_exists(file_id, context)
 
-    # Store the file metadata (In memory storage, can be replaced with a database)
-    submissions[user_id] = {"file_name": file_name, "file_id": file_id}
+    # Get the current time of the submission
+    submission_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    # Store the file metadata and submission time (In memory storage, can be replaced with a database)
+    submissions[user_id] = {"file_name": file_name, "file_id": file_id, "submission_time": submission_time}
 
     # Respond to the student with the file name and confirmation
     await update.message.reply_text(f"Received your file: {file_name} (File ID: {file_id})")
@@ -72,7 +76,8 @@ async def view_submissions(update: Update, context: CallbackContext) -> None:
             submission_list = "Student Submissions:\n"
             for student_id, data in submissions.items():
                 student_name = context.bot.get_chat(student_id).first_name  # Get student's name
-                submission_list += f"{student_name}: {data['file_name']} (File ID: {data['file_id']})\n"
+                submission_time = data["submission_time"]
+                submission_list += f"{student_name}: {data['file_name']} (File ID: {data['file_id']}) - Submitted at {submission_time}\n"
             await update.message.reply_text(submission_list)
         else:
             await update.message.reply_text("No submissions yet.")
