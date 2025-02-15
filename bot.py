@@ -96,7 +96,6 @@ async def register_teacher(update: Update, context: CallbackContext) -> None:
         await update.message.reply_text("❌ You are not authorized to register a teacher.")
 
 
-# Command to view student submissions (Only admins & assigned teachers can access)
 async def view_submissions(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
 
@@ -105,15 +104,27 @@ async def view_submissions(update: Update, context: CallbackContext) -> None:
         if submissions:
             submission_list = "📂 Student Submissions:\n"
             for student_id, data in submissions.items():
+                # Get the file object using the file_id
+                file = await context.bot.get_file(data['file_id'])
+                
+                # Get the correct file URL
+                file_url = f"https://api.telegram.org/file/bot{TOKEN}/{file.file_path}"
+
                 submission_list += (
                     f"👤 {data['student_name']}: {data['file_name']} (File ID: {data['file_id']})\n"
-                    f"📅 Submitted at: {data['submission_time']}\n\n"
+                    f"📅 Submitted at: {data['submission_time']}\n"
+                    f"🔗 [Download File]({file_url})\n\n"  # Add the file link here
                 )
-            await update.message.reply_text(submission_list)
+            await update.message.reply_text(submission_list, parse_mode='Markdown')
         else:
             await update.message.reply_text("📭 No submissions yet.")
     else:
         await update.message.reply_text("❌ You are not authorized to view submissions.")
+
+
+
+
+
 
 def main():
     app = Application.builder().token(TOKEN).build()
