@@ -6,6 +6,7 @@ from datetime import datetime
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 import io
+from google.oauth2.service_account import Credentials
 
 # Load environment variables from .env file
 load_dotenv()
@@ -13,6 +14,7 @@ load_dotenv()
 # Load sensitive information from environment variables
 TOKEN = os.getenv("BOT_TOKEN")
 GOOGLE_DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
+GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
 admin_ids = os.getenv("ADMIN_TELEGRAM_IDS")
 
 # Retrieve admin IDs safely and store them as a list
@@ -27,6 +29,41 @@ submissions = {}
 # Dictionary to store teachers and their registered students' submissions
 teachers = {}
 
+# Define the function to append data to Google Sheets
+async def append_submission_to_sheet(user_name, file_name, submission_time, file_url):
+    creds = Credentials.from_service_account_file('service-account.json')
+    sheets_service = build('sheets', 'v4', credentials=creds)
+
+    # Your Google Sheet ID (from .env file)
+    sheet_id = GOOGLE_SHEET_ID
+
+    # The range where you want to append the data (assuming Sheet1 is your sheet name)
+    range_ = "Sheet1!A2:D"  # Adjust the range as per your sheet structure
+
+    # Data to append: [Student Name, File Name, Submission Time, File URL]
+    values = [[user_name, file_name, submission_time, file_url]]
+
+    # Prepare the body for the API request
+    body = {
+        "values": values
+    }
+
+    try:
+        # Use the Sheets API to append the data
+        request = sheets_service.spreadsheets().values().append(
+            spreadsheetId=sheet_id,
+            range=range_,
+            valueInputOption="RAW",  # Use RAW to insert the data exactly as it is
+            body=body
+        )
+        response = request.execute()
+
+        # Print or log the successful response if needed
+        print(f"Data successfully appended: {response}")
+    except Exception as e:
+        print(f"Error appending data to Google Sheets: {e}")
+
+# Start command handler
 async def start(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
     user_name = update.message.from_user.first_name  # Get user's first name
@@ -49,6 +86,7 @@ async def start(update: Update, context: CallbackContext) -> None:
     else:
         await update.message.reply_text("Hello! Send me your assignment file.")
 
+# Handle document submissions (students send their assignments)
 async def handle_document(update: Update, context: CallbackContext) -> None:
     file = update.message.document
     file_id = file.file_id
@@ -59,20 +97,25 @@ async def handle_document(update: Update, context: CallbackContext) -> None:
     # Get the current time of the submission
     submission_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    # Store the submission
+    # Upload the file to Google Drive
+    file_url = await upload_to_google_drive(file, file_name)
+
+    # Store the submission metadata in Google Sheets
+    await append_submission_to_sheet(user_name, file_name, submission_time, file_url)
+
+    # Store the submission locally for future retrieval
     submissions[user_id] = {
         "file_name": file_name,
         "file_id": file_id,
         "submission_time": submission_time,
-        "student_name": user_name
+        "student_name": user_name,
+        "file_url": file_url
     }
 
     # Notify the student
-    await update.message.reply_text(f"✅ Received your file: {file_name} at {submission_time}")
+    await update.message.reply_text(f"✅ Received your file: {file_name} at {submission_time}. You can view it later!")
 
-    # Now, upload the file to Google Drive
-    await upload_to_google_drive(file, file_name)
-
+# Register teacher command (only admins can do this)
 async def register_teacher(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
 
@@ -103,7 +146,7 @@ async def register_teacher(update: Update, context: CallbackContext) -> None:
     else:
         await update.message.reply_text("❌ You are not authorized to register a teacher.")
 
-
+# View all submissions (for admins or registered teachers)
 async def view_submissions(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
 
@@ -114,17 +157,14 @@ async def view_submissions(update: Update, context: CallbackContext) -> None:
             
             # Iterate through all the submissions in the submissions dictionary
             for student_id, data in submissions.items():
-                # Get the file object using the file_id
-                file = await context.bot.get_file(data['file_id'])
-                
-                # Correctly format the file URL
-                file_url = f"https://api.telegram.org/file/bot{TOKEN}/{file.file_path}"
+                # Get the file URL from Google Drive
+                file_url = data['file_url']
 
-                # Add submission to the list
+                # Add submission metadata to the list
                 submission_list += (
                     f"👤 **{data['student_name']}**: {data['file_name']} (File ID: {data['file_id']})\n"
                     f"📅 **Submitted at**: {data['submission_time']}\n"
-                    f"🔗 **[Download File]({file_url})**\n\n"  # Use file ID link
+                    f"🔗 **[Download File]({file_url})**\n\n"  # Link to the file in Google Drive
                 )
 
                 # Prepare the caption for sending the file
@@ -137,28 +177,21 @@ async def view_submissions(update: Update, context: CallbackContext) -> None:
                 # Send the file with the caption to the teacher or admin
                 await context.bot.send_document(
                     chat_id=user_id,  # Send to the admin or teacher
-                    document=file.file_id,
+                    document=data['file_id'],  # File ID that was uploaded to Google Drive
                     caption=caption,  # Add caption to the document
                     parse_mode='Markdown'  # Ensure Markdown is enabled for link parsing
                 )
 
             # After sending all files, send the list of submissions to the teacher/admin
-           # await update.message.reply_text(submission_list, parse_mode='Markdown')
-
+            await update.message.reply_text(submission_list, parse_mode='Markdown')
         else:
             await update.message.reply_text("📭 No submissions yet.")
     else:
         await update.message.reply_text("❌ You are not authorized to view submissions.")
 
-
+# Function to upload files to Google Drive
 async def upload_to_google_drive(file, file_name):
-    """
-    Function to upload the assignment to Google Drive
-    """
-    from google.oauth2.service_account import Credentials
-
-    # Use your credentials to authenticate and interact with Google Drive
-    creds = Credentials.from_service_account_file('path/to/your/service-account-file.json')
+    creds = Credentials.from_service_account_file('service-account.json')
     drive_service = build('drive', 'v3', credentials=creds)
 
     # Get the file from Telegram Bot
@@ -173,15 +206,15 @@ async def upload_to_google_drive(file, file_name):
         media_body=media,
         body={
             'name': file_name,
-            'parents': [GOOGLE_DRIVE_FOLDER_ID]
+            'parents': [GOOGLE_DRIVE_FOLDER_ID]  # ID of the Google Drive folder where files should be stored
         }
     )
+    file_metadata = request.execute()
 
-    # Execute the upload request
-    request.execute()
+    file_url = f"https://drive.google.com/file/d/{file_metadata['id']}/view"
+    return file_url  # Return the file URL for further use
 
-    print(f"File {file_name} uploaded to Google Drive.")
-
+# Main function to start the bot
 def main():
     app = Application.builder().token(TOKEN).build()
 
