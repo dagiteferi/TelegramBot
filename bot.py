@@ -1,3 +1,6 @@
+import nest_asyncio
+nest_asyncio.apply()  # Patch the current event loop to allow nested use
+
 import os
 import io
 import re
@@ -111,7 +114,10 @@ async def upload_to_google_drive(file, file_name):
     uploaded_file = drive_service.files().create(
         body=file_metadata, media_body=media, fields="id, webViewLink"
     ).execute()
-    drive_service.permissions().create(fileId=uploaded_file['id'], body={'type': 'anyone', 'role': 'reader'}).execute()
+    drive_service.permissions().create(
+        fileId=uploaded_file['id'], 
+        body={'type': 'anyone', 'role': 'reader'}
+    ).execute()
     return uploaded_file['webViewLink']
 
 async def append_submission_to_sheet(user_name, file_name, submission_time, file_url):
@@ -165,23 +171,27 @@ async def register_teacher(update: Update, context: CallbackContext):
 async def view_submissions(update: Update, context: CallbackContext):
     global submissions
     submissions = load_all_submissions()
-    submissions_text = "\n".join([f"{data['student_name']} - {data['file_name']} - {data['submission_time']}" for data in submissions.values()])
+    submissions_text = "\n".join([
+        f"{data['student_name']} - {data['file_name']} - {data['submission_time']}"
+        for data in submissions.values()
+    ])
     await update.message.reply_text(submissions_text or "No submissions yet.")
 
 if __name__ == "__main__":
     from telegram.ext import Application
+    import asyncio
 
     async def main():
         application = Application.builder().token(TOKEN).build()
 
-        # Add your handler setup and other logic here
+        # Add your handler setup
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("register_teacher", register_teacher))
         application.add_handler(CommandHandler("view_submissions", view_submissions))
         application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
 
-        # This will handle the event loop internally
-        await application.run_polling()
+        # run_polling now uses close_loop=False, and thanks to nest_asyncio, this won’t raise errors
+        await application.run_polling(close_loop=False)
 
-    # Directly call the main coroutine without asyncio.run()
-    main()  # This is now safe and works without asyncio.run()
+    # Use asyncio.run() to start the main coroutine
+    asyncio.run(main())
