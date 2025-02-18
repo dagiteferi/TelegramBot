@@ -1,6 +1,7 @@
 import os
 import io
 import re
+import asyncio
 from datetime import datetime
 from dotenv import load_dotenv
 from telegram import Update, constants
@@ -27,28 +28,39 @@ submissions = {}
 def get_google_credentials():
     return Credentials.from_service_account_file('service-account.json')
 
+import time
+
 def load_submissions_from_sheet():
     local_submissions = {}
     creds = get_google_credentials()
     sheets_service = build('sheets', 'v4', credentials=creds)
+
+    retry_attempts = 3
+    for attempt in range(retry_attempts):
+        try:
+            sheet = sheets_service.spreadsheets().values().get(
+                spreadsheetId=GOOGLE_SHEET_ID, range="Sheet1!A2:D"
+            ).execute()
+            rows = sheet.get('values', [])
+            for row in rows:
+                if len(row) == 4:
+                    user_name, file_name, submission_time, file_url = row
+                    local_submissions[file_name] = {
+                        'student_name': user_name,
+                        'file_name': file_name,
+                        'submission_time': submission_time,
+                        'file_url': file_url
+                    }
+            break
+        except Exception as e:
+            print(f"Attempt {attempt + 1} failed: {e}")
+            if attempt < retry_attempts - 1:
+                time.sleep(5)  # Wait for 5 seconds before retrying
+            else:
+                print("All retry attempts failed.")
     
-    try:
-        sheet = sheets_service.spreadsheets().values().get(
-            spreadsheetId=GOOGLE_SHEET_ID, range="Sheet1!A2:D"
-        ).execute()
-        rows = sheet.get('values', [])
-        for row in rows:
-            if len(row) == 4:
-                user_name, file_name, submission_time, file_url = row
-                local_submissions[file_name] = {
-                    'student_name': user_name,
-                    'file_name': file_name,
-                    'submission_time': submission_time,
-                    'file_url': file_url
-                }
-    except Exception as e:
-        print(f"Error loading submissions from Google Sheets: {e}")
     return local_submissions
+
 
 def load_submissions_from_drive():
     local_submissions = {}
@@ -127,15 +139,23 @@ async def start(update: Update, context: CallbackContext):
         await update.message.reply_text("Send your assignment file.")
 
 async def handle_document(update: Update, context: CallbackContext):
-    file = update.message.document
-    file_name = file.file_name
-    user_id = update.message.from_user.id
-    user_name = update.message.from_user.first_name
-    submission_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    file_url = await upload_to_google_drive(file, file_name)
-    await append_submission_to_sheet(user_name, file_name, submission_time, file_url)
-    submissions[user_id] = {"file_name": file_name, "submission_time": submission_time, "student_name": user_name, "file_url": file_url}
-    await update.message.reply_text(f"✅ File received: {file_name}")
+    try:
+        file = update.message.document
+        file_name = file.file_name
+        # Check if the file already exists in the submissions
+        if file_name in submissions:
+            await update.message.reply_text(f"File '{file_name}' already submitted.")
+            return
+        
+        # Upload to Google Drive and update Google Sheets
+        file_url = await upload_to_google_drive(file, file_name)
+        user_name = update.message.from_user.full_name
+        submission_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        await append_submission_to_sheet(user_name, file_name, submission_time, file_url)
+
+        await update.message.reply_text(f"Assignment '{file_name}' submitted successfully.")
+    except Exception as e:
+        await update.message.reply_text(f"An error occurred: {str(e)}")
 
 async def register_teacher(update: Update, context: CallbackContext):
     if update.message.from_user.id in ADMIN_TELEGRAM_IDS and context.args:
@@ -153,17 +173,33 @@ async def view_submissions(update: Update, context: CallbackContext):
         await update.message.reply_text("No submissions yet.")
     
     for data in submissions.values():
-        caption = f"📄 {data['student_name']}\n🕒 {data['submission_time']}\n🔗 [Open File]({data['file_url']})"
-        try:
-            file_id = data['file_id']
-            await update.message.reply_document(
-                document=f"https://drive.google.com/uc?id={file_id}",  # Send the file
-                caption=escape_markdown(caption, version=2),  # Properly escape the caption for MarkdownV2
-                parse_mode=constants.ParseMode.MARKDOWN_V2
-            )
-        except KeyError:
-            # In case there's no file_id (e.g., it's only in the Google Sheet but not uploaded to Drive)
-            await update.message.reply_text(f"File {data['file_name']} is missing on Google Drive.")
+        student_name = data.get('student_name', 'Unknown Student')
+        submission_time = data.get('submission_time', 'Unknown Time')
+        file_url = data.get('file_url', None)
+        file_name = data.get('file_name', 'Unknown File')
+        file_id = data.get('file_id', None)  # Ensure that file_id is available
+        
+        caption = f"📄 {student_name}\n🕒 {submission_time}\n"
+        
+        if file_id:
+            try:
+                # Send the actual file from Google Drive
+                drive_service = build('drive', 'v3', credentials=get_google_credentials())
+                file = drive_service.files().get_media(fileId=file_id).execute()
+                
+                # Convert the file to byte format for Telegram
+                file_data = io.BytesIO(file)
+                await update.message.reply_document(
+                    document=file_data,
+                    filename=file_name,
+                    caption=escape_markdown(caption, version=2),
+                    parse_mode=constants.ParseMode.MARKDOWN_V2
+                )
+            except Exception as e:
+                await update.message.reply_text(f"Error fetching file '{file_name}': {str(e)}")
+        else:
+            # If file_id is missing, inform that the file is missing
+            await update.message.reply_text(f"File '{file_name}' is missing on Google Drive.")
 
 
 def main():
