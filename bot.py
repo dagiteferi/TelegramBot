@@ -3,14 +3,19 @@ from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 from datetime import datetime
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
+import io
 
-# Load environment variables
+# Load environment variables from .env file
 load_dotenv()
-TOKEN = os.getenv("BOT_TOKEN")
 
-# Retrieve admin IDs safely and store them as a list
+# Load sensitive information from environment variables
+TOKEN = os.getenv("BOT_TOKEN")
+GOOGLE_DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
 admin_ids = os.getenv("ADMIN_TELEGRAM_IDS")
 
+# Retrieve admin IDs safely and store them as a list
 if admin_ids:
     ADMIN_TELEGRAM_IDS = list(map(int, admin_ids.split(",")))  # Convert to list of integers
 else:
@@ -64,6 +69,9 @@ async def handle_document(update: Update, context: CallbackContext) -> None:
 
     # Notify the student
     await update.message.reply_text(f"✅ Received your file: {file_name} at {submission_time}")
+
+    # Now, upload the file to Google Drive
+    await upload_to_google_drive(file, file_name)
 
 async def register_teacher(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
@@ -143,8 +151,36 @@ async def view_submissions(update: Update, context: CallbackContext) -> None:
         await update.message.reply_text("❌ You are not authorized to view submissions.")
 
 
+async def upload_to_google_drive(file, file_name):
+    """
+    Function to upload the assignment to Google Drive
+    """
+    from google.oauth2.service_account import Credentials
 
+    # Use your credentials to authenticate and interact with Google Drive
+    creds = Credentials.from_service_account_file('path/to/your/service-account-file.json')
+    drive_service = build('drive', 'v3', credentials=creds)
 
+    # Get the file from Telegram Bot
+    file_obj = await file.get_file()
+    file_content = await file_obj.download_as_bytearray()
+
+    # Prepare file for upload to Google Drive
+    media = MediaIoBaseUpload(io.BytesIO(file_content), mimetype='application/octet-stream')
+
+    # Upload the file to Google Drive folder
+    request = drive_service.files().create(
+        media_body=media,
+        body={
+            'name': file_name,
+            'parents': [GOOGLE_DRIVE_FOLDER_ID]
+        }
+    )
+
+    # Execute the upload request
+    request.execute()
+
+    print(f"File {file_name} uploaded to Google Drive.")
 
 def main():
     app = Application.builder().token(TOKEN).build()
