@@ -129,7 +129,15 @@ async def upload_to_google_drive(file, file_name):
         fields="id, webViewLink"
     ).execute()
 
+    # Set file to be publicly accessible
+    permission = {
+        'type': 'anyone',
+        'role': 'reader'
+    }
+    drive_service.permissions().create(fileId=uploaded_file['id'], body=permission).execute()
+
     return uploaded_file['webViewLink']
+
 
 # Append submission to Google Sheets
 async def append_submission_to_sheet(user_name, file_name, submission_time, file_url):
