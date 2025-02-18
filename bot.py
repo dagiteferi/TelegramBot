@@ -4,12 +4,11 @@ import re
 import asyncio
 from datetime import datetime
 from dotenv import load_dotenv
-from telegram import Update, constants
+from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 from google.oauth2.service_account import Credentials
-from telegram.helpers import escape_markdown
 import time
 
 # Load environment variables
@@ -169,19 +168,20 @@ async def view_submissions(update: Update, context: CallbackContext):
     submissions_text = "\n".join([f"{data['student_name']} - {data['file_name']} - {data['submission_time']}" for data in submissions.values()])
     await update.message.reply_text(submissions_text or "No submissions yet.")
 
-async def main():
-    application = Application.builder().token(TOKEN).build()
-
-    # Command handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("register_teacher", register_teacher, pass_args=True))
-    application.add_handler(CommandHandler("view_submissions", view_submissions))
-
-    # Message handlers
-    application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
-
-    # Start polling
-    await application.run_polling()
-
 if __name__ == "__main__":
-    asyncio.run(main())
+    from telegram.ext import Application
+
+    async def main():
+        application = Application.builder().token(TOKEN).build()
+
+        # Add your handler setup and other logic here
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("register_teacher", register_teacher))
+        application.add_handler(CommandHandler("view_submissions", view_submissions))
+        application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+
+        # This will handle the event loop internally
+        await application.run_polling()
+
+    # Directly call the main coroutine without asyncio.run()
+    main()  # This is now safe and works without asyncio.run()
