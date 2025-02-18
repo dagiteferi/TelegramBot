@@ -10,6 +10,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 from google.oauth2.service_account import Credentials
 from telegram.helpers import escape_markdown
+import time
 
 # Load environment variables
 load_dotenv()
@@ -27,8 +28,6 @@ submissions = {}
 
 def get_google_credentials():
     return Credentials.from_service_account_file('service-account.json')
-
-import time
 
 def load_submissions_from_sheet():
     local_submissions = {}
@@ -60,7 +59,6 @@ def load_submissions_from_sheet():
                 print("All retry attempts failed.")
     
     return local_submissions
-
 
 def load_submissions_from_drive():
     local_submissions = {}
@@ -168,47 +166,22 @@ async def register_teacher(update: Update, context: CallbackContext):
 async def view_submissions(update: Update, context: CallbackContext):
     global submissions
     submissions = load_all_submissions()
-    
-    if not submissions:
-        await update.message.reply_text("No submissions yet.")
-    
-    for data in submissions.values():
-        student_name = data.get('student_name', 'Unknown Student')
-        submission_time = data.get('submission_time', 'Unknown Time')
-        file_url = data.get('file_url', None)
-        file_name = data.get('file_name', 'Unknown File')
-        file_id = data.get('file_id', None)  # Ensure that file_id is available
-        
-        caption = f"📄 {student_name}\n🕒 {submission_time}\n"
-        
-        if file_id:
-            try:
-                # Send the actual file from Google Drive
-                drive_service = build('drive', 'v3', credentials=get_google_credentials())
-                file = drive_service.files().get_media(fileId=file_id).execute()
-                
-                # Convert the file to byte format for Telegram
-                file_data = io.BytesIO(file)
-                await update.message.reply_document(
-                    document=file_data,
-                    filename=file_name,
-                    caption=escape_markdown(caption, version=2),
-                    parse_mode=constants.ParseMode.MARKDOWN_V2
-                )
-            except Exception as e:
-                await update.message.reply_text(f"Error fetching file '{file_name}': {str(e)}")
-        else:
-            # If file_id is missing, inform that the file is missing
-            await update.message.reply_text(f"File '{file_name}' is missing on Google Drive.")
+    submissions_text = "\n".join([f"{data['student_name']} - {data['file_name']} - {data['submission_time']}" for data in submissions.values()])
+    await update.message.reply_text(submissions_text or "No submissions yet.")
 
+async def main():
+    application = Application.builder().token(TOKEN).build()
 
-def main():
-    app = Application.builder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
-    app.add_handler(CommandHandler("register_teacher", register_teacher))
-    app.add_handler(CommandHandler("view_submissions", view_submissions))
-    app.run_polling()
+    # Command handlers
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("register_teacher", register_teacher, pass_args=True))
+    application.add_handler(CommandHandler("view_submissions", view_submissions))
+
+    # Message handlers
+    application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+
+    # Start polling
+    await application.run_polling()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
