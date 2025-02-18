@@ -148,11 +148,23 @@ async def register_teacher(update: Update, context: CallbackContext):
 async def view_submissions(update: Update, context: CallbackContext):
     global submissions
     submissions = load_all_submissions()
+    
     if not submissions:
         await update.message.reply_text("No submissions yet.")
+    
     for data in submissions.values():
-        caption = f"📄 {escape_markdown(data['student_name'], version=2)}\n🕒 {escape_markdown(data['submission_time'], version=2)}\n🔗 [Open File]({data['file_url']})"
-        await update.message.reply_text(caption, parse_mode=constants.ParseMode.MARKDOWN_V2)
+        caption = f"📄 {data['student_name']}\n🕒 {data['submission_time']}\n🔗 [Open File]({data['file_url']})"
+        try:
+            file_id = data['file_id']
+            await update.message.reply_document(
+                document=f"https://drive.google.com/uc?id={file_id}",  # Send the file
+                caption=escape_markdown(caption, version=2),  # Properly escape the caption for MarkdownV2
+                parse_mode=constants.ParseMode.MARKDOWN_V2
+            )
+        except KeyError:
+            # In case there's no file_id (e.g., it's only in the Google Sheet but not uploaded to Drive)
+            await update.message.reply_text(f"File {data['file_name']} is missing on Google Drive.")
+
 
 def main():
     app = Application.builder().token(TOKEN).build()
